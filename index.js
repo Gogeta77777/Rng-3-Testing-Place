@@ -245,8 +245,7 @@ const TITLE_CATALOG = {
 };
 
 function isAdministratorUser(user) {
-  const username = String(user?.username || '').trim().toLowerCase();
-  return Boolean(user?.is_admin || username === 'mr_fernanski' || username === 'testadmin');
+  return Boolean(user?.is_admin);
 }
 
 function hasAdminPanelAccess(user) {
@@ -550,6 +549,41 @@ async function saveUser(user) {
   if (inMemoryStore.users[normalized]) return false;
   inMemoryStore.users[normalized] = user;
   return true;
+}
+
+async function seedDevelopmentOwner() {
+  if (process.env.NODE_ENV !== 'development' || !process.env.DEV_OWNER_PASSWORD) return;
+  const password = process.env.DEV_OWNER_PASSWORD;
+  if (password.length < 12) {
+    throw new Error('DEV_OWNER_PASSWORD must be at least 12 characters.');
+  }
+
+  const username = 'rngtesters';
+  const existing = await findUser(username);
+  if (existing) {
+    console.warn(`Development owner account "${username}" already exists; leaving it unchanged.`);
+    return;
+  }
+
+  const created = await saveUser({
+    username,
+    password: hashPassword(password),
+    coins: 0,
+    spins: 0,
+    inventory: { rarities: {} },
+    achievements: [],
+    potions: { luck: 0, 'luck-ii': 0, coin: 0, speed: 0 },
+    items: { fragments: 0, clovers: 0, essence: 0, molten_rock: 0, ancient_ore: 0, old_potato_sticker: 0, empty_vial: 0, treasure_chest: 0, event_controller: 0 },
+    titles: ['owner'],
+    is_admin: true,
+    created_at: new Date().toISOString(),
+    last_login: new Date().toISOString()
+  });
+  if (!created) {
+    console.warn(`Development owner account "${username}" already exists; leaving it unchanged.`);
+    return;
+  }
+  console.log(`Created development owner account "${username}".`);
 }
 
 async function updateUser(username, updates) {
@@ -1504,11 +1538,11 @@ app.post('/api/register', async (req, res) => {
     achievements: [],
     potions: { luck: 0, 'luck-ii': 0, coin: 0, speed: 0 },
     items: { fragments: 0, clovers: 0, essence: 0, molten_rock: 0, ancient_ore: 0, old_potato_sticker: 0, empty_vial: 0, treasure_chest: 0, event_controller: 0 },
-    titles: normalized.toLowerCase() === 'mr_fernanski' || normalized === 'testadmin' ? ['owner'] : [],
+    titles: [],
     portal_unlocked: false,
     sea_realm_unlocked: false,
     forge_realm_unlocked: false,
-    is_admin: normalized.toLowerCase() === 'mr_fernanski' || normalized === 'testadmin',
+    is_admin: false,
     created_at: new Date().toISOString(),
     last_login: new Date().toISOString()
   };
@@ -3641,6 +3675,7 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   try {
     await ensureDatabase();
+    await seedDevelopmentOwner();
     await loadAdminHeadline();
     server.listen(PORT, () => {
       console.log(`🚀 RNG 3 Server running on port ${PORT}`);
